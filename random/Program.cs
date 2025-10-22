@@ -1,5 +1,15 @@
 ﻿using System;
 using System.IO;
+using System.Collections.Generic;
+
+class Player
+{
+    public string Name { get; set; }
+    public Player(string name)
+    {
+        Name = name;
+    }
+}
 
 class NumberGuessingGame
 {
@@ -14,17 +24,18 @@ class NumberGuessingGame
 
     const int MaxAttempts = 10;
 
-    enum GameMode { Single, Reverse, Mixed }
+    enum GameMode { Single, Reverse, Mixed, MultiPlayer }
     enum Difficulty { Easy, Normal, Hard }
 
     static void Main()
     {
         Console.WriteLine("Witaj w grze 'Zgadnij liczbę'!");
-        string playerName = GetPlayerName();
+        Player humanPlayer = new Player(GetPlayerName());
+        Player programPlayer = new Player("Komputer");
 
         while (true)
         {
-            Console.WriteLine("Wybierz tryb gry:\n1. Ty zgadujesz (Single)\n2. Program zgaduje (Reverse)\n3. Gra mieszana (Multi)\n0. Wyjście");
+            Console.WriteLine("Wybierz tryb gry:\n1. Ty zgadujesz (Single)\n2. Program zgaduje (Reverse)\n3. Gra mieszana (Multi)\n4. Gra wieloosobowa (3 graczy)\n0. Wyjście");
             string modeInput = Console.ReadLine().Trim();
             if (modeInput == "0") break;
 
@@ -33,10 +44,11 @@ class NumberGuessingGame
                 "1" => "Single",
                 "2" => "Reverse",
                 "3" => "Mixed",
+                "4" => "MultiPlayer",
                 _ => ""
             }, out GameMode mode))
             {
-                Console.WriteLine("Nieznany tryb, wybierz 1, 2, 3 lub 0.");
+                Console.WriteLine("Nieznany tryb, wybierz 0,1,2,3 lub 4.");
                 continue;
             }
 
@@ -45,13 +57,16 @@ class NumberGuessingGame
             switch (mode)
             {
                 case GameMode.Single:
-                    PlaySingleGame(playerName, difficulty);
+                    PlaySingleGame(humanPlayer, difficulty);
                     break;
                 case GameMode.Reverse:
-                    PlayReverseGame(playerName, difficulty);
+                    PlayReverseGame(humanPlayer, programPlayer, difficulty);
                     break;
                 case GameMode.Mixed:
-                    PlayMixedGame(playerName, difficulty);
+                    PlayMixedGame(humanPlayer, programPlayer, difficulty);
+                    break;
+                case GameMode.MultiPlayer:
+                    PlayMultiPlayerGame(difficulty);
                     break;
             }
         }
@@ -85,6 +100,7 @@ class NumberGuessingGame
         GameMode.Single => "single",
         GameMode.Reverse => "reverse",
         GameMode.Mixed => "multi",
+        GameMode.MultiPlayer => "multiplayer",
         _ => "single"
     };
 
@@ -96,10 +112,10 @@ class NumberGuessingGame
         _ => "easy"
     };
 
-    static void PlaySingleGame(string playerName, Difficulty diff)
+    static void PlaySingleGame(Player player, Difficulty diff)
     {
         var (min, max) = GetRange(diff);
-        int bestScore = LoadBestScore(playerName, GameMode.Single, diff);
+        int bestScore = LoadBestScore(player.Name, GameMode.Single, diff);
 
         Console.WriteLine(bestScore >= 0
             ? $"Twój najlepszy wynik na poziomie {GetDifficultyString(diff)}: {bestScore} prób."
@@ -108,13 +124,13 @@ class NumberGuessingGame
         int attempts = PlayGame(min, max);
         if (attempts == -1)
             Console.WriteLine("Nie udało się zgadnąć liczby.");
-        else UpdateBestScore(playerName, GameMode.Single, diff, attempts);
+        else UpdateBestScore(player.Name, GameMode.Single, diff, attempts);
     }
 
-    static void PlayReverseGame(string playerName, Difficulty diff)
+    static void PlayReverseGame(Player humanPlayer, Player programPlayer, Difficulty diff)
     {
         var (min, max) = GetRange(diff);
-        int bestScore = LoadBestScore(playerName, GameMode.Reverse, diff);
+        int bestScore = LoadBestScore(programPlayer.Name, GameMode.Reverse, diff);
 
         Console.WriteLine(bestScore >= 0
             ? $"Najlepszy wynik programu na poziomie {GetDifficultyString(diff)}: {bestScore} prób."
@@ -123,13 +139,13 @@ class NumberGuessingGame
         int attempts = PlayGameReverse(min, max);
         if (attempts == -1)
             Console.WriteLine("Program nie zgadł Twojej liczby.");
-        else UpdateBestScore(playerName, GameMode.Reverse, diff, attempts);
+        else UpdateBestScore(programPlayer.Name, GameMode.Reverse, diff, attempts);
     }
 
-    static void PlayMixedGame(string playerName, Difficulty diff)
+    static void PlayMixedGame(Player humanPlayer, Player programPlayer, Difficulty diff)
     {
         var (min, max) = GetRange(diff);
-        (int wins, int losses) = LoadMultiStats(playerName, diff);
+        (int wins, int losses) = LoadMultiStats(humanPlayer.Name, diff);
 
         Console.WriteLine($"Twoje dotychczasowe wyniki (wygrane/przegrane) na poziomie {GetDifficultyString(diff)}: {wins}/{losses}");
 
@@ -155,7 +171,7 @@ class NumberGuessingGame
                 if (guess == numberToGuessByPlayer)
                 {
                     Console.WriteLine($"Wygrałeś w {playerAttempts} próbach!");
-                    SaveMultiStats(playerName, diff, wins + 1, losses);
+                    SaveMultiStats(humanPlayer.Name, diff, wins + 1, losses);
                     return;
                 }
                 Console.WriteLine(guess > numberToGuessByPlayer ? "Za dużo!" : "Za mało!");
@@ -171,7 +187,7 @@ class NumberGuessingGame
                 if (resp == "t")
                 {
                     Console.WriteLine($"Program wygrał w {programAttempts} próbach!");
-                    SaveMultiStats(playerName, diff, wins, losses + 1);
+                    SaveMultiStats(humanPlayer.Name, diff, wins, losses + 1);
                     return;
                 }
                 if (resp == "w") low = progGuess + 1;
@@ -187,7 +203,62 @@ class NumberGuessingGame
             playerTurn = !playerTurn;
         }
         Console.WriteLine("Nikt nie wygrał w podanej liczbie prób.");
-        SaveMultiStats(playerName, diff, wins, losses + 1);
+        SaveMultiStats(humanPlayer.Name, diff, wins, losses + 1);
+    }
+
+    static void PlayMultiPlayerGame(Difficulty diff)
+    {
+        var (min, max) = GetRange(diff);
+
+        List<Player> players = new List<Player>();
+        for (int i = 1; i <= 3; i++)
+        {
+            Console.Write($"Podaj nazwę gracza {i}: ");
+            string name;
+            do
+            {
+                name = Console.ReadLine().Trim();
+                if (string.IsNullOrEmpty(name)) Console.WriteLine("Nazwa nie może być pusta.");
+            } while (string.IsNullOrEmpty(name));
+            players.Add(new Player(name));
+        }
+
+        int numberToGuess = new Random().Next(min, max + 1);
+        Console.WriteLine($"Została wylosowana liczba z zakresu {min}-{max}. Gracze na zmianę będą zgadywać.");
+
+        int[] attemptsPerPlayer = new int[3];
+        bool someoneWon = false;
+        int winnerIndex = -1;
+
+        for (int round = 1; round <= MaxAttempts; round++)
+        {
+            for (int i = 0; i < players.Count; i++)
+            {
+                if (round > MaxAttempts) break;
+
+                attemptsPerPlayer[i]++;
+                Console.Write($"{players[i].Name}, próba {attemptsPerPlayer[i]}/{MaxAttempts}: ");
+                if (!int.TryParse(Console.ReadLine(), out int guess) || guess < min || guess > max)
+                {
+                    Console.WriteLine($"Liczba musi być z zakresu {min}-{max}");
+                    attemptsPerPlayer[i]--;
+                    i--;
+                    continue;
+                }
+                if (guess == numberToGuess)
+                {
+                    Console.WriteLine($"{players[i].Name} wygrał w {attemptsPerPlayer[i]} próbach!");
+                    someoneWon = true;
+                    winnerIndex = i;
+                    break;
+                }
+                Console.WriteLine(guess > numberToGuess ? "Za dużo!" : "Za mało!");
+            }
+            if (someoneWon) break;
+        }
+
+        if (!someoneWon)
+            Console.WriteLine("Nikt nie wygrał w podanej liczbie prób.");
     }
 
     static int PlayGame(int min, int max)
@@ -248,90 +319,45 @@ class NumberGuessingGame
 
     static int LoadBestScore(string playerName, GameMode mode, Difficulty diff)
     {
-        string fileName = $"{playerName}_{GetDifficultyString(diff)}_{GetModeString(mode)}.txt";
-        if (!File.Exists(fileName)) return -1;
-
-        try
-        {
-            string content = File.ReadAllText(fileName);
-            if (int.TryParse(content, out int score))
-                return score;
-            else
-                return -1;
-        }
-        catch
-        {
-            return -1;
-        }
+        string filename = $"scores_{playerName}_{GetModeString(mode)}_{GetDifficultyString(diff)}.txt";
+        if (!File.Exists(filename)) return -1;
+        if (int.TryParse(File.ReadAllText(filename), out int best)) return best;
+        return -1;
     }
 
-    static void SaveBestScore(string playerName, GameMode mode, Difficulty diff, int score)
+    static void SaveBestScore(string playerName, GameMode mode, Difficulty diff, int attempts)
     {
-        string fileName = $"{playerName}_{GetDifficultyString(diff)}_{GetModeString(mode)}.txt";
-        try
-        {
-            File.WriteAllText(fileName, score.ToString());
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Błąd podczas zapisu wyniku: {ex.Message}");
-        }
+        string filename = $"scores_{playerName}_{GetModeString(mode)}_{GetDifficultyString(diff)}.txt";
+        File.WriteAllText(filename, attempts.ToString());
     }
 
     static (int wins, int losses) LoadMultiStats(string playerName, Difficulty diff)
     {
-        string fileName = $"{playerName}_{GetDifficultyString(diff)}_multi_stats.txt";
-        if (!File.Exists(fileName))
-            return (0, 0);
-
-        try
-        {
-            string content = File.ReadAllText(fileName);
-            string[] parts = content.Split(';');
-            int wins = 0, losses = 0;
-
-            foreach (var part in parts)
-            {
-                if (part.StartsWith("wins=") && int.TryParse(part.Substring(5), out int w))
-                    wins = w;
-                else if (part.StartsWith("losses=") && int.TryParse(part.Substring(7), out int l))
-                    losses = l;
-            }
-
+        string filename = $"multi_stats_{playerName}_{GetDifficultyString(diff)}.txt";
+        if (!File.Exists(filename)) return (0, 0);
+        string[] lines = File.ReadAllLines(filename);
+        if (lines.Length < 2) return (0, 0);
+        if (int.TryParse(lines[0], out int wins) && int.TryParse(lines[1], out int losses))
             return (wins, losses);
-        }
-        catch
-        {
-            return (0, 0);
-        }
+        return (0, 0);
     }
 
     static void SaveMultiStats(string playerName, Difficulty diff, int wins, int losses)
     {
-        string fileName = $"{playerName}_{GetDifficultyString(diff)}_multi_stats.txt";
-        string content = $"wins={wins};losses={losses}";
-
-        try
-        {
-            File.WriteAllText(fileName, content);
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Błąd podczas zapisu statystyk multi: {ex.Message}");
-        }
+        string filename = $"multi_stats_{playerName}_{GetDifficultyString(diff)}.txt";
+        File.WriteAllLines(filename, new string[] { wins.ToString(), losses.ToString() });
     }
 
     static string GetPlayerName()
     {
-        Console.Write("Podaj swój nick: ");
-        string name = Console.ReadLine().Trim();
-
-        while (string.IsNullOrEmpty(name))
+        Console.Write("Podaj swoją nazwę: ");
+        string name;
+        do
         {
-            Console.Write("Nick nie może być pusty. Podaj swój nick: ");
             name = Console.ReadLine().Trim();
-        }
-
+            if (string.IsNullOrEmpty(name))
+                Console.Write("Nazwa nie może być pusta. Podaj nazwę: ");
+        } while (string.IsNullOrEmpty(name));
         return name;
     }
 }
